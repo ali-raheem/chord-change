@@ -7,6 +7,8 @@ const paths = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   shuffle: '<path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 3-2 4-4m4-4c1-2 2-4 4-4h3m-4-4 4 4-4 4"/>',
   'volume-off': '<path d="m11 5-6 4H2v6h3l6 4V5Zm5 4 6 6m0-6-6 6"/>',
+  'screen-off': '<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M11 18h2M4 4l16 16"/>',
+  screen: '<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M11 18h2M9.5 9.5 12 7l2.5 2.5M12 7v6"/>',
   volume: '<path d="m11 5-6 4H2v6h3l6 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
   switch: '<path d="M3 7h17m-5-5 5 5-5 5M21 17H4m5-5-5 5 5 5"/>',
   play: '<path d="m8 4 12 8-12 8Z" fill="currentColor" stroke="none"/>',
@@ -26,10 +28,12 @@ document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = icon(el.da
 
 let selected = new Set(['C', 'G', 'Am', 'Em']);
 let duration = 60;
+let keepAwake = false;
 try {
   const saved = JSON.parse(localStorage.getItem('chordchange-settings'));
   if (saved && Array.isArray(saved.chords)) selected = new Set(saved.chords.filter(name => CHORDS.some(c => c.name === name)));
   if (saved && Number.isInteger(saved.duration) && saved.duration >= 5 && saved.duration <= 600) duration = saved.duration;
+  if (saved && saved.keepAwake === true) keepAwake = true;
 } catch { /* Storage is optional. */ }
 let pairs = [];
 let state = 'ready';
@@ -40,10 +44,37 @@ let interval;
 let sound = false;
 let audioContext;
 let skipped = 0;
+// Screen Wake Lock needs a secure context; the browser also drops the lock whenever the page is hidden.
+const wakeLockSupported = 'wakeLock' in navigator && window.isSecureContext;
+let wakeLock;
+let wakeLockRequest;
 
 function announce(message) { $('announcement').textContent = message; }
 function saveSettings() {
-  try { localStorage.setItem('chordchange-settings', JSON.stringify({ chords: [...selected], duration })); } catch { /* Storage is optional. */ }
+  try { localStorage.setItem('chordchange-settings', JSON.stringify({ chords: [...selected], duration, keepAwake })); } catch { /* Storage is optional. */ }
+}
+
+function wakeLockWanted() { return keepAwake && (state === 'running' || state === 'paused') && !document.hidden; }
+function syncWakeLock() {
+  if (!wakeLockSupported) return;
+  if (wakeLockWanted()) {
+    if (wakeLock || wakeLockRequest) return;
+    wakeLockRequest = navigator.wakeLock.request('screen').then(lock => {
+      wakeLock = lock;
+      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = undefined; });
+      if (!wakeLockWanted()) lock.release().catch(() => {});
+    }).catch(() => { /* Practice continues; the screen may dim. */ }).finally(() => { wakeLockRequest = undefined; });
+  } else if (wakeLock) {
+    wakeLock.release().catch(() => {});
+  }
+}
+function renderAwakeToggle() {
+  const button = $('awake-toggle');
+  button.innerHTML = icon(keepAwake ? 'screen' : 'screen-off');
+  button.setAttribute('aria-pressed', String(keepAwake));
+  const label = wakeLockSupported ? `${keepAwake ? 'Let the screen dim' : 'Keep the screen awake'} during practice` : 'Keeping the screen awake is not available in this browser';
+  button.setAttribute('aria-label', label); button.title = label;
+  button.disabled = !wakeLockSupported;
 }
 
 function renderChord(target, name) {
@@ -74,7 +105,7 @@ function renderSelection() {
 function renderQueue() {
   $('queue').innerHTML = pairs.map((pair, i) => `<div class="queue-pair ${i < index || state === 'complete' ? 'done' : i === index ? 'active' : ''}" ${i === index ? 'aria-current="step"' : ''}><span class="pair-number">${i < index || state === 'complete' ? '✓' : String(i+1).padStart(2,'0')}</span><span>${pair[0]}</span><span class="pair-arrow">↔</span><span>${pair[1]}</span></div>`).join('') || '<span class="field-description">Your chord pairs will appear here.</span>';
   const active = $('queue').querySelector('.active');
-  if (active) $('queue').scrollLeft = Math.max(0, active.offsetLeft - $('queue').offsetLeft - 12);
+  if (active) $('queue').scrollLeft = Math.max(0, active.offsetLeft - 12);
 }
 
 function renderPair() {
@@ -111,6 +142,7 @@ function renderState() {
   $('chord-stage').hidden = state === 'complete';
   $('completion').hidden = state !== 'complete';
   $('keyboard-hint').innerHTML = state === 'complete' ? 'Same chords. A fresh flow. Go again when you’re ready.' : 'Press <kbd>space</kbd> to start or pause';
+  syncWakeLock();
 }
 
 function configure() {
@@ -131,28 +163,32 @@ function configure() {
   renderPair(); renderState(); updateTimer(duration); saveSettings();
 }
 
-function chime(completed = false) {
+// A short percussive tick: one at the start of each pair, two when the session is done.
+function click(count = 1) {
   if (!sound || !audioContext) return;
   try {
     const t = audioContext.currentTime;
-    [523.25, completed ? 783.99 : 659.25].forEach((frequency, i) => {
+    for (let i = 0; i < count; i++) {
+      const at = t + i * .16;
+      const last = count > 1 && i === count - 1;
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      oscillator.type = 'sine'; oscillator.frequency.value = frequency;
-      gain.gain.setValueAtTime(0, t+i*.14);
-      gain.gain.linearRampToValueAtTime(.12, t+i*.14+.015);
-      gain.gain.exponentialRampToValueAtTime(.001, t+i*.14+.45);
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(last ? 2400 : 1900, at);
+      oscillator.frequency.exponentialRampToValueAtTime(last ? 900 : 700, at + .03);
+      gain.gain.setValueAtTime(.28, at);
+      gain.gain.exponentialRampToValueAtTime(.001, at + .05);
       oscillator.connect(gain); gain.connect(audioContext.destination);
-      oscillator.start(t+i*.14); oscillator.stop(t+i*.14+.5);
+      oscillator.start(at); oscillator.stop(at + .06);
       oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
-    });
+    }
   } catch { /* Timer works even if audio is unavailable. */ }
 }
 
 function finish() {
   clearInterval(interval); state = 'complete'; index = pairs.length;
   $('completion-message').textContent = `${pairs.length-skipped} chord pairs practiced${skipped ? ` · ${skipped} skipped` : ''}. Keep that feeling going.`;
-  updateTimer(0, 1); renderPair(); renderState(); chime(true);
+  updateTimer(0, 1); renderPair(); renderState(); click(2);
   announce(`Session complete. ${pairs.length-skipped} chord pairs practiced.`);
 }
 
@@ -161,7 +197,7 @@ function tick() {
   const position = sessionPosition(elapsed + Date.now() - startedAt, duration, pairs.length);
   if (position.complete) { finish(); return; }
   if (position.index !== index) {
-    index = position.index; renderPair(); renderState(); chime();
+    index = position.index; renderPair(); renderState(); click();
     announce(`Pair ${index+1} of ${pairs.length}: ${pairs[index].join(' and ')}.`);
   }
   updateTimer(position.remaining, position.progress);
@@ -177,10 +213,12 @@ function togglePractice() {
     return;
   }
   if (state === 'complete') configure();
-  if (state === 'ready') { elapsed = 0; index = 0; skipped = 0; }
+  const fresh = state === 'ready';
+  if (fresh) { elapsed = 0; index = 0; skipped = 0; }
   state = 'running'; startedAt = Date.now();
   if (audioContext?.state === 'suspended') audioContext.resume().catch(() => {});
   renderState(); renderPair(); tick(); interval = setInterval(tick, 100);
+  if (fresh) click();
   announce(`Practice started. ${pairs[index].join(' and ')}. ${duration} seconds.`);
 }
 
@@ -212,7 +250,7 @@ $('skip-button').addEventListener('click', () => {
   if (state === 'complete') return;
   skipped++; index++; elapsed = index * duration * 1000; startedAt = Date.now();
   if (index >= pairs.length) { finish(); return; }
-  renderPair(); renderState(); updateTimer(duration, index / pairs.length); chime();
+  renderPair(); renderState(); updateTimer(duration, index / pairs.length); click();
   announce(`Next pair: ${pairs[index].join(' and ')}.`);
 });
 $('sound-toggle').addEventListener('click', async () => {
@@ -225,7 +263,12 @@ $('sound-toggle').addEventListener('click', async () => {
   $('sound-toggle').setAttribute('aria-pressed', String(sound));
   const label = `${sound ? 'Disable' : 'Enable'} sound at pair changes`;
   $('sound-toggle').setAttribute('aria-label', label); $('sound-toggle').title = label;
-  if (sound) chime();
+  if (sound) click();
+});
+$('awake-toggle').addEventListener('click', () => {
+  keepAwake = !keepAwake;
+  renderAwakeToggle(); saveSettings(); syncWakeLock();
+  announce(keepAwake ? 'The screen will stay awake during practice.' : 'The screen may dim during practice.');
 });
 $('help-button').addEventListener('click', () => $('help-dialog').showModal());
 $('close-help').addEventListener('click', () => $('help-dialog').close());
@@ -235,7 +278,8 @@ document.addEventListener('keydown', event => {
   if (event.code !== 'Space' || event.repeat || event.altKey || event.ctrlKey || event.metaKey || $('help-dialog').open || event.target.closest('button, input, textarea, select, a, [contenteditable]')) return;
   event.preventDefault(); togglePractice();
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); syncWakeLock(); });
 renderSelection();
+renderAwakeToggle();
 $('custom-time').hidden = [30,60,90].includes(duration);
 configure();
