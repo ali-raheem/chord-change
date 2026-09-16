@@ -163,32 +163,29 @@ function configure() {
   renderPair(); renderState(); updateTimer(duration); saveSettings();
 }
 
-// A short percussive tick: one at the start of each pair, two when the session is done.
-function click(count = 1) {
+// Two soft sine notes at the start of each pair; the second note rises higher when the session is done.
+function chime(completed = false) {
   if (!sound || !audioContext) return;
   try {
     const t = audioContext.currentTime;
-    for (let i = 0; i < count; i++) {
-      const at = t + i * .16;
-      const last = count > 1 && i === count - 1;
+    [523.25, completed ? 783.99 : 659.25].forEach((frequency, i) => {
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      oscillator.type = 'triangle';
-      oscillator.frequency.setValueAtTime(last ? 2400 : 1900, at);
-      oscillator.frequency.exponentialRampToValueAtTime(last ? 900 : 700, at + .03);
-      gain.gain.setValueAtTime(.28, at);
-      gain.gain.exponentialRampToValueAtTime(.001, at + .05);
+      oscillator.type = 'sine'; oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0, t+i*.14);
+      gain.gain.linearRampToValueAtTime(.12, t+i*.14+.015);
+      gain.gain.exponentialRampToValueAtTime(.001, t+i*.14+.45);
       oscillator.connect(gain); gain.connect(audioContext.destination);
-      oscillator.start(at); oscillator.stop(at + .06);
+      oscillator.start(t+i*.14); oscillator.stop(t+i*.14+.5);
       oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
-    }
+    });
   } catch { /* Timer works even if audio is unavailable. */ }
 }
 
 function finish() {
   clearInterval(interval); state = 'complete'; index = pairs.length;
   $('completion-message').textContent = `${pairs.length-skipped} chord pairs practiced${skipped ? ` · ${skipped} skipped` : ''}. Keep that feeling going.`;
-  updateTimer(0, 1); renderPair(); renderState(); click(2);
+  updateTimer(0, 1); renderPair(); renderState(); chime(true);
   announce(`Session complete. ${pairs.length-skipped} chord pairs practiced.`);
 }
 
@@ -197,7 +194,7 @@ function tick() {
   const position = sessionPosition(elapsed + Date.now() - startedAt, duration, pairs.length);
   if (position.complete) { finish(); return; }
   if (position.index !== index) {
-    index = position.index; renderPair(); renderState(); click();
+    index = position.index; renderPair(); renderState(); chime();
     announce(`Pair ${index+1} of ${pairs.length}: ${pairs[index].join(' and ')}.`);
   }
   updateTimer(position.remaining, position.progress);
@@ -218,7 +215,7 @@ function togglePractice() {
   state = 'running'; startedAt = Date.now();
   if (audioContext?.state === 'suspended') audioContext.resume().catch(() => {});
   renderState(); renderPair(); tick(); interval = setInterval(tick, 100);
-  if (fresh) click();
+  if (fresh) chime();
   announce(`Practice started. ${pairs[index].join(' and ')}. ${duration} seconds.`);
 }
 
@@ -250,7 +247,7 @@ $('skip-button').addEventListener('click', () => {
   if (state === 'complete') return;
   skipped++; index++; elapsed = index * duration * 1000; startedAt = Date.now();
   if (index >= pairs.length) { finish(); return; }
-  renderPair(); renderState(); updateTimer(duration, index / pairs.length); click();
+  renderPair(); renderState(); updateTimer(duration, index / pairs.length); chime();
   announce(`Next pair: ${pairs[index].join(' and ')}.`);
 });
 $('sound-toggle').addEventListener('click', async () => {
@@ -263,7 +260,7 @@ $('sound-toggle').addEventListener('click', async () => {
   $('sound-toggle').setAttribute('aria-pressed', String(sound));
   const label = `${sound ? 'Disable' : 'Enable'} sound at pair changes`;
   $('sound-toggle').setAttribute('aria-label', label); $('sound-toggle').title = label;
-  if (sound) click();
+  if (sound) chime();
 });
 $('awake-toggle').addEventListener('click', () => {
   keepAwake = !keepAwake;

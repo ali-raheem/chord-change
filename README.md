@@ -19,7 +19,7 @@ Open http://localhost:5173. Set `PORT` to use another port. The app can also be 
 - 30, 60, or 90 seconds per pair, or a custom duration from 5 to 600 seconds
 - Automatic advancement, pause/resume, skip, end session, and reshuffle
 - Queue, session progress, and completion summary
-- Optional sound cues: a soft click when each new pair starts, a double click when the session is complete
+- Optional sound cues: a gentle chime when each new pair starts, a brighter one when the session is complete
 - Optional keep-awake so a phone screen does not dim during practice
 - Keyboard controls, accessible diagrams, responsive layout, and saved settings
 - Installable app with offline practice after the first successful online load
