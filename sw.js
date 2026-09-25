@@ -1,10 +1,10 @@
 // Bump this version whenever a cached file changes. Updates activate after
 // existing app windows close, keeping each session on one consistent version.
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_PREFIX = `chordchange-app-${encodeURIComponent(self.registration.scope)}-`;
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const APP_FILES = [
-  './', './index.html', './styles.css', './app.js', './practice.js', './pwa.js',
+  './', './index.html', './styles.css', './app.js', './practice.js', './pwa.js', './version.js',
   './favicon.svg', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',
 ].map(file => new URL(file, self.registration.scope).pathname);

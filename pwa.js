@@ -1,8 +1,28 @@
+import { BUILD } from './version.js';
+
 const panel = document.getElementById('install-panel');
 const button = document.getElementById('install-button');
 const status = document.getElementById('install-status');
 const standalone = window.matchMedia('(display-mode: standalone)');
 let installPrompt;
+
+const buildInfo = document.getElementById('build-info');
+const buildLabel = BUILD.builtAt ? `Version ${BUILD.commit} · ${BUILD.builtAt.slice(0, 16).replace('T', ' ')} UTC` : 'Development build';
+let storageLabel = '';
+function renderBuildInfo() { buildInfo.textContent = storageLabel ? `${buildLabel} · ${storageLabel}` : buildLabel; }
+renderBuildInfo();
+
+// Ask the browser not to evict the offline cache under storage pressure.
+// Chrome decides silently (installed apps are normally granted); Firefox may ask the user.
+async function keepOfflineData() {
+  if (!navigator.storage?.persist) return;
+  try {
+    const kept = await navigator.storage.persisted() || await navigator.storage.persist();
+    storageLabel = kept ? 'Offline data kept' : 'Offline data may be cleared';
+  } catch { storageLabel = ''; }
+  renderBuildInfo();
+}
+keepOfflineData();
 
 function clearPrompt() {
   installPrompt = undefined;
@@ -39,6 +59,7 @@ button.addEventListener('click', async () => {
 
 window.addEventListener('appinstalled', () => {
   clearPrompt();
+  keepOfflineData();
   status.textContent = 'Chord Change is installed. Find it in your app launcher.';
   status.hidden = false;
 });

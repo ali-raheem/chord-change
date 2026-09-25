@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-No dependencies, no install step, no build step. Requires Node.js 20+.
+No dependencies and no install step. Requires Node.js 20+. The only build is `npm run release`, which copies the shipped files into `dist/` and stamps `version.js`.
 
 ```sh
 npm start                          # static dev server on http://localhost:5173 (PORT env var overrides)
 npm test                           # node --test, runs *.test.js
+npm run release                    # build dist/ with commit + UTC time stamped into version.js
 node --test --test-name-pattern="timer advances" practice.test.js   # single test
 ```
 
@@ -27,18 +28,19 @@ A vanilla-JS, zero-dependency progressive web app for practicing guitar chord ch
 
 **State machine:** `state` is one of `ready | running | paused | complete`. `renderState()` is the single place that maps state to button labels, copy, and disabled controls. `configure()` rebuilds pairs and resets the session and is a no-op while running or paused, so settings are effectively locked during practice. Settings (`chords`, `duration`) persist in `localStorage` under `chordchange-settings`.
 
-**PWA layer** (`pwa.js`, `sw.js`, `manifest.webmanifest`): `pwa.js` handles the install prompt and registers the worker with `updateViaCache: 'none'`. `sw.js` precaches the explicit `APP_FILES` list, only intercepts GETs for those exact paths, and intentionally does *not* call `skipWaiting`, so a new version activates only after all app windows close. All asset URLs are relative (`./`) so the app works at the domain root or in a subdirectory like `/cc/`.
+**PWA layer** (`pwa.js`, `sw.js`, `manifest.webmanifest`): `pwa.js` handles the install prompt, registers the worker with `updateViaCache: 'none'`, requests persistent storage, and renders the footer version line from `version.js`. The committed `version.js` is a `dev` placeholder; only `dist/version.js` carries a real stamp. `sw.js` precaches the explicit `APP_FILES` list, only intercepts GETs for those exact paths, and intentionally does *not* call `skipWaiting`, so a new version activates only after all app windows close. All asset URLs are relative (`./`) so the app works at the domain root or in a subdirectory like `/cc/`.
 
 ## Adding or changing files
 
-Three lists must stay in sync when a shipped file is added, removed, or renamed:
+Two lists must stay in sync when a shipped file is added, removed, or renamed:
 
-1. `allowed` set in `server.js`
+1. `SHIPPED_FILES` in `shipped-files.js`, which drives both the dev server and `npm run release`
 2. `APP_FILES` in `sw.js`
-3. The file list in `README.md` (Run section)
+
+The service worker cannot import that module, so its list is maintained by hand. The bare `/cc` path (no trailing slash) is outside the worker's scope and cannot load offline.
 
 When any cached file changes, bump `CACHE_VERSION` in `sw.js`. When `styles.css` changes, also bump the `?v=` query on the stylesheet link in `index.html` (currently kept equal to the cache version).
 
 ## Deployment
 
-Production is static files served by Nginx at https://shoryuken.me/cc/ behind Cloudflare. See the "Current production deployment" section of `README.md` for server details, backup location, and the checklist (back up, bump cache version, upload a complete release including `icons/`, `nginx -t`, verify in Chrome). Cloudflare returns 403 to plain scripted HTTP probes, so verify the public site with a real browser.
+Production is static files served by Nginx at https://shoryuken.me/cc/ behind Cloudflare. See the "Current production deployment" section of `README.md` for server details, backup location, and the checklist (commit, bump cache version, `npm run release`, back up, upload the contents of `dist/`, `nginx -t`, verify in Chrome that the footer shows the deployed commit). Cloudflare returns 403 to plain scripted HTTP probes, so verify the public site with a real browser.
