@@ -47,7 +47,7 @@ Deploy the app files to an **HTTPS** website, or serve the Node app behind an HT
 
 Chrome controls when the install prompt is available, including engagement and already-installed checks. A previous home-screen shortcut can be removed once the app is installed. Installation does not require a Play Store listing.
 
-The manifest provides a stable app ID, standalone display mode, 192px and 512px PNG icons, and a separate maskable Android icon. The service worker caches all files needed for practice. After the first successful cache, opening the app, chord references, timer, and saved settings work offline.
+The manifest provides a stable app ID (`/chordchange`, which Chrome resolves against the origin, so it is independent of the hosting folder and distinct from `start_url`), standalone display mode, 192px and 512px PNG icons, and a separate maskable Android icon. The service worker caches all files needed for practice. After the first successful cache, opening the app, chord references, timer, and saved settings work offline.
 
 ### Deploying updates
 
