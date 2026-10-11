@@ -65,18 +65,6 @@ Bump `CACHE_VERSION` in `sw.js` whenever any cached app file changes, update the
 Chrome requirements: https://web.dev/articles/install-criteria
 
 
-## Current production deployment
-
-- URL: https://shoryuken.me/cc/
-- Server: `root@185.163.204.17` (`ursula`)
-- Static app directory: `/var/www/shoryuken.me/cc`
-- Nginx virtual host: `/etc/nginx/sites-enabled/shoryuken.me`
-- HTTPS terminates at Nginx with an existing Certbot certificate; public traffic goes through Cloudflare.
-- No Node service is used in production. Run `npm run release` from a clean, committed tree and upload the contents of `dist/`, including `icons/`.
-- The `/cc/` location uses `Cache-Control: no-cache`, and `/cc/manifest.webmanifest` explicitly uses `application/manifest+json`. The service worker is limited to `/cc/`.
-
-The installable release was deployed on 2026-09-15 (backup of the previous release at `/var/backups/chordchange/20260915T125052Z/`). The keep-awake and click-cue release (cache v4) was deployed on 2026-09-16; the v3 app and Nginx configuration are backed up at `/var/backups/chordchange/20260916T101533Z/` on the server (`cc/` and `shoryuken.me.nginx`). The footer install button release (commit `05be99e`, cache v8) was deployed on 2026-10-04; the previous release (`7333c4f`, cache v7) is backed up at `/var/backups/chordchange/20261004T083734Z/cc`. The server has no `curl`. Upload with `rsync -a --delete --chmod=D755,F644 dist/ root@185.163.204.17:/var/www/shoryuken.me/cc/` (earlier `tar` uploads kept the local uid and 664 modes) and verify from a client machine. The footer stamp on the live page should show the commit you deployed. Future deployments should preserve a backup, bump the service worker cache version, upload a complete release, validate any Nginx configuration changes with `nginx -t`, and verify the public site in Chrome. Cloudflare rejects plain Python HTTP probes with 403 here, so use Chromium for public checks or a TLS-verified origin connection for server-side health checks.
-
 ## Licence
 
 [MIT](LICENSE) © 2026 Ali Raheem.
